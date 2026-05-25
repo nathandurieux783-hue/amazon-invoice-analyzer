@@ -4,7 +4,7 @@ import ConfigStep from './components/ConfigStep'
 import ProgressStep from './components/ProgressStep'
 import AnalysisStep from './components/AnalysisStep'
 
-const STEPS = ['Connexion', 'Configuration', 'Téléchargement', 'Analyse']
+const STEPS = ['Connexion', 'Configuration', 'Scraping', 'Analyse']
 
 function Stepper({ current }) {
   return (
@@ -13,9 +13,9 @@ function Stepper({ current }) {
         <div key={i} className="flex items-center">
           <div className="flex flex-col items-center">
             <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors
-              ${i < current ? 'bg-green-500 text-white' :
+              ${i < current  ? 'bg-green-500 text-white' :
                 i === current ? 'bg-amazon-orange text-amazon-dark' :
-                'bg-gray-200 text-gray-400'}`}>
+                                'bg-gray-200 text-gray-400'}`}>
               {i < current ? '✓' : i + 1}
             </div>
             <span className={`mt-1.5 text-xs font-medium whitespace-nowrap
@@ -36,23 +36,23 @@ function Stepper({ current }) {
 export default function App() {
   const [step, setStep] = useState(0)
   const [credentials, setCredentials] = useState(null)
-  const [config, setConfig] = useState(null)
   const [messages, setMessages] = useState([])
-  const [downloadCount, setDownloadCount] = useState(0)
-  const [progress, setProgress] = useState({ current: 0, total: 0 })
-  const [analysisData, setAnalysisData] = useState(null)
+  const [orderCount, setOrderCount] = useState(0)
+  const [scrapedOrders, setScrapedOrders] = useState([])
   const [otpRequired, setOtpRequired] = useState(false)
+  const [analysisData, setAnalysisData] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
 
   const wsRef = useRef(null)
   const addMsg = useCallback((msg) => setMessages(prev => [...prev, msg]), [])
 
   const startScraping = useCallback((creds, cfg) => {
     setCredentials(creds)
-    setConfig(cfg)
     setMessages([])
-    setDownloadCount(0)
-    setProgress({ current: 0, total: 0 })
+    setOrderCount(0)
+    setScrapedOrders([])
     setOtpRequired(false)
+    setAnalysisData(null)
     setStep(2)
 
     const ws = new WebSocket('ws://localhost:8000/ws')
@@ -66,7 +66,6 @@ export default function App() {
         marketplace: creds.marketplace,
         start_date: cfg.startDate,
         end_date: cfg.endDate,
-        download_path: cfg.downloadPath,
       }))
     }
 
@@ -82,15 +81,10 @@ export default function App() {
 
       } else if (data.type === 'status') {
         addMsg({ type: 'info', text: data.message })
-        if (data.total) setProgress(p => ({ ...p, total: data.total }))
 
       } else if (data.type === 'orders_found') {
+        setOrderCount(data.count)
         addMsg({ type: 'info', text: `${data.count} commande(s) trouvée(s) en ${data.year}` })
-
-      } else if (data.type === 'progress') {
-        setProgress({ current: data.current, total: data.total })
-        setDownloadCount(data.current)
-        addMsg({ type: 'success', text: data.message })
 
       } else if (data.type === 'warning') {
         addMsg({ type: 'warning', text: data.message })
@@ -99,16 +93,17 @@ export default function App() {
         addMsg({ type: 'error', text: data.message })
 
       } else if (data.type === 'completed') {
-        setDownloadCount(data.count)
+        const orders = data.orders || []
+        setOrderCount(orders.length)
+        setScrapedOrders(orders)
         addMsg({
           type: 'success',
-          text: `Terminé ! ${data.count} facture(s) téléchargée(s).`
+          text: `Terminé ! ${orders.length} commande(s) récupérée(s).`,
         })
       }
     }
 
     ws.onerror = () => addMsg({ type: 'error', text: 'Erreur de connexion WebSocket.' })
-    ws.onclose = () => {}
   }, [addMsg])
 
   const sendOtp = useCallback((code) => {
@@ -120,13 +115,13 @@ export default function App() {
   }, [addMsg])
 
   const launchAnalysis = useCallback(async () => {
-    if (!config?.downloadPath) return
+    if (!scrapedOrders.length) return
+    setAnalyzing(true)
     try {
-      addMsg({ type: 'info', text: 'Analyse en cours…' })
-      const res = await fetch('/api/analyze', {
+      const res = await fetch('/api/analyze-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ download_path: config.downloadPath }),
+        body: JSON.stringify({ orders: scrapedOrders }),
       })
       const data = await res.json()
       if (data.error) {
@@ -137,18 +132,19 @@ export default function App() {
       }
     } catch {
       addMsg({ type: 'error', text: 'Impossible de contacter le serveur d\'analyse.' })
+    } finally {
+      setAnalyzing(false)
     }
-  }, [config, addMsg])
+  }, [scrapedOrders, addMsg])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Header */}
       <header className="bg-amazon-dark text-white shadow-lg">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
           <span className="text-3xl">📦</span>
           <div>
             <h1 className="text-xl font-bold tracking-tight">Amazon Invoice Analyzer</h1>
-            <p className="text-gray-400 text-xs">Téléchargez et analysez vos factures Amazon</p>
+            <p className="text-gray-400 text-xs">Analysez vos dépenses Amazon en quelques secondes</p>
           </div>
         </div>
       </header>
@@ -168,16 +164,15 @@ export default function App() {
         {step === 2 && (
           <ProgressStep
             messages={messages}
-            progress={progress}
-            downloadCount={downloadCount}
+            orderCount={orderCount}
             otpRequired={otpRequired}
             onOtp={sendOtp}
-            downloadPath={config?.downloadPath}
             onAnalyze={launchAnalysis}
+            analyzing={analyzing}
           />
         )}
         {step === 3 && analysisData && (
-          <AnalysisStep data={analysisData} downloadPath={config?.downloadPath} />
+          <AnalysisStep data={analysisData} />
         )}
       </main>
 

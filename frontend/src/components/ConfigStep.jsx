@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import FolderBrowser from './FolderBrowser'
 
 function today() {
   return new Date().toISOString().split('T')[0]
@@ -14,132 +13,75 @@ export default function ConfigStep({ onBack, onStart }) {
   const [form, setForm] = useState({
     startDate: oneYearAgo(),
     endDate: today(),
-    downloadPath: '',
   })
-  const [pathError, setPathError] = useState('')
-  const [browserOpen, setBrowserOpen] = useState(false)
+  const [error, setError] = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const validate = () => {
-    if (!form.downloadPath.trim()) {
-      setPathError('Veuillez sélectionner un dossier de destination.')
-      return false
-    }
-    if (form.startDate > form.endDate) {
-      setPathError('La date de début doit être antérieure à la date de fin.')
-      return false
-    }
-    setPathError('')
-    return true
-  }
-
   const handleStart = () => {
-    if (validate()) onStart(form)
-  }
-
-  const handleFolderSelect = (path) => {
-    set('downloadPath', path)
-    setPathError('')
-    setBrowserOpen(false)
+    if (form.startDate > form.endDate) {
+      setError('La date de début doit être antérieure à la date de fin.')
+      return
+    }
+    setError('')
+    onStart(form)
   }
 
   return (
-    <>
-      <div className="max-w-lg mx-auto">
-        <div className="card">
-          <div className="text-center mb-8">
-            <div className="text-5xl mb-3">📅</div>
-            <h2 className="text-xl font-bold text-gray-800">Période & Destination</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Définissez la période à analyser et où sauvegarder les factures.
+    <div className="max-w-md mx-auto">
+      <div className="card">
+        <div className="text-center mb-8">
+          <div className="text-5xl mb-3">📅</div>
+          <h2 className="text-xl font-bold text-gray-800">Période à analyser</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Les montants et catégories sont extraits directement depuis Amazon,
+            sans téléchargement de fichiers.
+          </p>
+        </div>
+
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Date de début</label>
+              <input
+                type="date"
+                className="input"
+                value={form.startDate}
+                max={form.endDate}
+                onChange={e => set('startDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Date de fin</label>
+              <input
+                type="date"
+                className="input"
+                value={form.endDate}
+                min={form.startDate}
+                max={today()}
+                onChange={e => set('endDate', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-sm text-blue-800">
+            <p className="font-semibold mb-1">⚡ Mode rapide</p>
+            <p>
+              L'analyse se lance dès que le scraping est terminé —
+              pas de téléchargement, résultat en quelques secondes par page.
             </p>
           </div>
 
-          <div className="space-y-5">
-            {/* Date range */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Date de début</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={form.startDate}
-                  max={form.endDate}
-                  onChange={e => set('startDate', e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="label">Date de fin</label>
-                <input
-                  type="date"
-                  className="input"
-                  value={form.endDate}
-                  min={form.startDate}
-                  max={today()}
-                  onChange={e => set('endDate', e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Download path */}
-            <div>
-              <label className="label">Dossier de destination</label>
-              <div className="flex gap-2">
-                <div
-                  onClick={() => setBrowserOpen(true)}
-                  className={`input flex-1 cursor-pointer flex items-center gap-2 select-none
-                    hover:border-amazon-orange transition-colors
-                    ${form.downloadPath ? 'text-gray-800' : 'text-gray-400'}`}
-                >
-                  <span className="text-base shrink-0">📁</span>
-                  <span className="truncate text-sm">
-                    {form.downloadPath || 'Cliquez pour choisir un dossier…'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setBrowserOpen(true)}
-                  className="btn-secondary text-sm whitespace-nowrap"
-                >
-                  Parcourir
-                </button>
-              </div>
-              {form.downloadPath && (
-                <p className="text-xs text-gray-400 mt-1 font-mono truncate">{form.downloadPath}</p>
-              )}
-              {pathError && (
-                <p className="text-xs text-red-500 mt-1">{pathError}</p>
-              )}
-            </div>
-
-            {/* Summary */}
-            {form.downloadPath && (
-              <div className="rounded-lg bg-blue-50 border border-blue-100 p-4 text-sm text-blue-800">
-                <p className="font-semibold mb-1">Récapitulatif</p>
-                <p>Période : <strong>{form.startDate}</strong> → <strong>{form.endDate}</strong></p>
-                <p className="mt-0.5 truncate">Dossier : <strong>{form.downloadPath}</strong></p>
-              </div>
-            )}
-
-            <div className="flex gap-3 mt-2">
-              <button className="btn-secondary flex-1" onClick={onBack}>
-                ← Retour
-              </button>
-              <button className="btn-primary flex-grow-[2]" onClick={handleStart}>
-                Lancer le téléchargement 🚀
-              </button>
-            </div>
+          <div className="flex gap-3">
+            <button className="btn-secondary flex-1" onClick={onBack}>← Retour</button>
+            <button className="btn-primary flex-grow-[2]" onClick={handleStart}>
+              Lancer le scraping 🚀
+            </button>
           </div>
         </div>
       </div>
-
-      {browserOpen && (
-        <FolderBrowser
-          onSelect={handleFolderSelect}
-          onClose={() => setBrowserOpen(false)}
-        />
-      )}
-    </>
+    </div>
   )
 }

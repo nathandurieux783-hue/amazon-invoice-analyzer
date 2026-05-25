@@ -215,6 +215,21 @@ def parse_invoice_pdf(pdf_path: str) -> dict:
 
 
 class InvoiceAnalyzer:
+    def analyze_orders(self, orders: list) -> dict:
+        """Analyze orders scraped directly from Amazon (no PDFs needed)."""
+        # Normalise to the same shape _aggregate expects
+        invoices = [
+            {
+                "order_id": o.get("id"),
+                "date":     o.get("date"),
+                "total":    float(o.get("total", 0) or 0),
+                "category": o.get("category", "Autres"),
+                "items":    [{"name": n, "price": 0} for n in o.get("items", [])],
+            }
+            for o in orders
+        ]
+        return self._aggregate(invoices)
+
     def analyze(self, download_path: str) -> dict:
         pdf_dir = Path(download_path)
         if not pdf_dir.exists():

@@ -61,16 +61,13 @@ class AmazonScraper:
         self._otp_event.set()
 
     async def run(self, email: str, password: str, marketplace: str,
-                  start_date: str, end_date: str, download_path: str, ws):
+                  start_date: str, end_date: str, ws):
 
         async def send(data: dict):
             try:
                 await ws.send_text(json.dumps(data))
             except Exception:
                 pass
-
-        download_dir = Path(download_path)
-        download_dir.mkdir(parents=True, exist_ok=True)
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -152,37 +149,14 @@ class AmazonScraper:
                                 "count": len(all_orders), "year": year})
 
                 if not all_orders:
-                    await send({"type": "completed", "count": 0,
-                                "message": "Aucune commande trouvée pour cette période."})
+                    await send({"type": "completed", "count": 0, "orders": []})
                     return
 
-                await send({"type": "status",
-                            "message": f"{len(all_orders)} commande(s) trouvée(s). Téléchargement...",
-                            "total": len(all_orders)})
-
-                # ── Download invoices ──
-                downloaded = 0
-                for i, order in enumerate(all_orders):
-                    try:
-                        await self._download_invoice(
-                            page, order, marketplace, download_dir, context)
-                        downloaded += 1
-                        await send({
-                            "type": "progress",
-                            "current": i + 1,
-                            "total": len(all_orders),
-                            "order_id": order["id"],
-                            "message": f"Facture {order['id']} sauvegardée"
-                        })
-                    except Exception as exc:
-                        await send({
-                            "type": "warning",
-                            "message": f"Facture {order.get('id', '?')} ignorée : {exc}"
-                        })
-                    await asyncio.sleep(1.2)
-
-                await send({"type": "completed", "count": downloaded,
-                            "download_path": str(download_dir)})
+                await send({
+                    "type": "completed",
+                    "count": len(all_orders),
+                    "orders": all_orders,
+                })
 
             except Exception as exc:
                 await send({"type": "error", "message": f"Erreur inattendue : {exc}"})
@@ -302,8 +276,17 @@ class AmazonScraper:
             for order_id in new_ids:
                 seen_ids.add(order_id)
                 order_date = self._find_order_date(page_text, order_id, year)
-                if order_date and start_date <= order_date <= end_date:
-                    orders.append({"id": order_id, "date": order_date.isoformat()})
+                if not order_date or not (start_date <= order_date <= end_date):
+                    continue
+                amount = self._find_order_amount(page_text, order_id)
+                items  = self._find_order_items(html, order_id)
+                orders.append({
+                    "id":       order_id,
+                    "date":     order_date.isoformat(),
+                    "total":    amount,
+                    "items":    items,
+                    "category": self._categorize(items),
+                })
 
             await send({"type": "status",
                         "message": f"Page {start_index // 10 + 1} — {len(new_ids)} commande(s) détectée(s)"})
@@ -355,28 +338,43 @@ class AmazonScraper:
         # Fallback: mid-year (order is on the correct year page, so include it)
         return date(year, 6, 15)
 
-    async def _download_invoice(self, page, order: dict, marketplace: str,
-                                 download_dir: Path, context):
-        order_id = order["id"]
-        order_date = order.get("date", "unknown")
+    def _find_order_amount(self, page_text: str, order_id: str) -> float:
+        idx = page_text.find(order_id)
+        # Look in the 1 200 chars after the order ID (where the total is shown)
+        ctx = page_text[idx: idx + 1200] if idx != -1 else ""
 
-        invoice_url = (f"https://www.{marketplace}/gp/css/summary/print.html"
-                       f"?orderID={order_id}")
+        # Prefer a labelled total
+        m = re.search(
+            r'(?:Total(?:\s+de\s+la\s+commande)?|Order\s+[Tt]otal|Montant\s+total)'
+            r'[\s:]*(\d[\d\s]*[,\.]\d{2})\s*€',
+            ctx, re.IGNORECASE)
+        if m:
+            return float(m.group(1).replace(' ', '').replace(',', '.'))
 
-        inv_page = await context.new_page()
-        try:
-            await inv_page.goto(invoice_url, wait_until='networkidle', timeout=30000)
-            await asyncio.sleep(1)
+        # Fallback: largest € amount in context (usually the order total)
+        amounts = [float(a.replace(' ', '').replace(',', '.'))
+                   for a in re.findall(r'(\d[\d\s]*[,\.]\d{2})\s*€', ctx)]
+        return max(amounts) if amounts else 0.0
 
-            filename = f"invoice_{order_id}_{order_date}.pdf"
-            pdf_path = download_dir / filename
+    def _find_order_items(self, html: str, order_id: str) -> list[str]:
+        idx = html.find(order_id)
+        # Product links always contain /dp/<ASIN>
+        ctx = html[max(0, idx - 200): idx + 4000] if idx != -1 else ""
+        titles = re.findall(
+            r'<a[^>]+href="[^"]*\/dp\/[A-Z0-9]{10}[^"]*"[^>]*>\s*([^<]{5,150})\s*<\/a>',
+            ctx)
+        skip = {'voir', 'détail', 'retour', 'aide', 'connexion', 'compte',
+                'commande', 'panier', 'liste', 'partager', 'signaler'}
+        items = [t.strip() for t in titles
+                 if t.strip() and not any(s in t.lower() for s in skip)]
+        return list(dict.fromkeys(items))[:6]  # dedupe, max 6
 
-            await inv_page.pdf(
-                path=str(pdf_path),
-                format='A4',
-                print_background=True,
-                margin={'top': '1cm', 'right': '1cm',
-                        'bottom': '1cm', 'left': '1cm'},
-            )
-        finally:
-            await inv_page.close()
+    def _categorize(self, items: list[str]) -> str:
+        from analyzer import categorize_item
+        if not items:
+            return "Autres"
+        scores: dict = {}
+        for item in items:
+            cat = categorize_item(item)
+            scores[cat] = scores.get(cat, 0) + 1
+        return max(scores, key=scores.get)

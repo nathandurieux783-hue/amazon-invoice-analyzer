@@ -19,7 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# One active scraper per WebSocket session
 _scrapers: dict[str, AmazonScraper] = {}
 
 
@@ -41,14 +40,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 marketplace=msg.get("marketplace", "amazon.fr"),
                 start_date=msg["start_date"],
                 end_date=msg["end_date"],
-                download_path=msg["download_path"],
                 ws=websocket,
             )
 
-        elif msg.get("type") == "otp":
-            scraper.set_otp(msg["code"])
-
-        # Keep connection alive to receive OTP if needed
+        # Keep alive for OTP
         while True:
             try:
                 raw = await asyncio.wait_for(websocket.receive_text(), timeout=60)
@@ -70,6 +65,18 @@ async def websocket_endpoint(websocket: WebSocket):
         _scrapers.pop(session_id, None)
 
 
+class AnalyzeOrdersRequest(BaseModel):
+    orders: list[dict]
+
+
+@app.post("/api/analyze-orders")
+async def analyze_orders(req: AnalyzeOrdersRequest):
+    """Analyze orders already scraped (no PDF needed)."""
+    analyzer = InvoiceAnalyzer()
+    return analyzer.analyze_orders(req.orders)
+
+
+# Legacy PDF analysis endpoint kept for manual use
 class AnalyzeRequest(BaseModel):
     download_path: str
 
@@ -77,23 +84,14 @@ class AnalyzeRequest(BaseModel):
 @app.post("/api/analyze")
 async def analyze(req: AnalyzeRequest):
     analyzer = InvoiceAnalyzer()
-    result = analyzer.analyze(req.download_path)
-    return result
-
-
-class MkdirRequest(BaseModel):
-    path: str
-    name: str
+    return analyzer.analyze(req.download_path)
 
 
 @app.get("/api/browse")
 def browse(path: str = Query(default="")):
-    """Return subdirectories at the given path (defaults to home dir)."""
     target = Path(path) if path else Path.home()
-
     if not target.exists() or not target.is_dir():
         return {"error": "Dossier introuvable", "path": str(target), "dirs": [], "parent": None}
-
     try:
         dirs = sorted(
             [{"name": d.name, "path": str(d)} for d in target.iterdir()
@@ -102,14 +100,17 @@ def browse(path: str = Query(default="")):
         )
     except PermissionError:
         dirs = []
-
     parent = str(target.parent) if target.parent != target else None
     return {"path": str(target), "parent": parent, "dirs": dirs}
 
 
+class MkdirRequest(BaseModel):
+    path: str
+    name: str
+
+
 @app.post("/api/mkdir")
 def mkdir(req: MkdirRequest):
-    """Create a new subfolder inside the given path."""
     new_dir = Path(req.path) / req.name
     try:
         new_dir.mkdir(parents=True, exist_ok=True)
