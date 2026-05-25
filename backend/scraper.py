@@ -194,7 +194,9 @@ class AmazonScraper:
             await email_field.fill(email)
             await asyncio.sleep(0.5)
 
-            await page.locator('#continue').click()
+            # Amazon has two elements with id="continue" (a <span> and an <input>)
+            # → target the actual submit input to avoid strict-mode violation
+            await page.locator('input#continue').click()
             await asyncio.sleep(2)
 
             password_field = page.locator('#ap_password')
@@ -202,7 +204,8 @@ class AmazonScraper:
             await password_field.fill(password)
             await asyncio.sleep(0.5)
 
-            await page.locator('#signInSubmit').click()
+            # Same issue possible on signInSubmit — use input selector
+            await page.locator('input#signInSubmit').click()
             await asyncio.sleep(3)
 
         except Exception as exc:
@@ -221,7 +224,7 @@ class AmazonScraper:
     async def _submit_otp(self, page, code: str):
         otp_field = page.locator('#auth-mfa-otpcode')
         await otp_field.fill(code)
-        submit = page.locator('#auth-signin-button')
+        submit = page.locator('input#auth-signin-button')
         if await submit.count() > 0:
             await submit.click()
         else:
