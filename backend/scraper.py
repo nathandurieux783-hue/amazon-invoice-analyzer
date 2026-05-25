@@ -276,88 +276,84 @@ class AmazonScraper:
 
     async def _get_year_orders(self, page, marketplace, year,
                                 start_date, end_date, send):
+        """Extract orders by scanning raw HTML for order-ID patterns.
+        This avoids relying on Amazon's frequently-changing CSS classes."""
         orders = []
+        seen_ids: set = set()
         start_index = 0
 
         while True:
             url = (f"https://www.{marketplace}/gp/your-account/order-history"
                    f"?orderFilter=year-{year}&startIndex={start_index}")
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2)
 
-            # Multiple selector strategies
-            cards = await page.locator(
-                '.order-card, .js-order-card, [data-component="orderCard"]'
-            ).all()
+            # Pull both raw HTML (for order IDs) and visible text (for dates)
+            html = await page.content()
+            page_text = await page.evaluate("() => document.body.innerText")
 
-            if not cards:
-                break
+            # Find every order ID on this page (pattern: 3-7-7 digits)
+            found_ids = list(dict.fromkeys(re.findall(r'\b(\d{3}-\d{7}-\d{7})\b', html)))
+            new_ids = [oid for oid in found_ids if oid not in seen_ids]
 
-            found_any = False
-            for card in cards:
-                try:
-                    # Date – try several selectors
-                    date_text = None
-                    for sel in [
-                        '.order-info .a-col-left span:not(.label):not(.a-color-secondary)',
-                        '.order-header .a-col-left .value',
-                        '.order-date-invoice-item .a-color-secondary',
-                        '.order-date',
-                    ]:
-                        el = card.locator(sel).first
-                        if await el.count() > 0:
-                            date_text = (await el.inner_text()).strip()
-                            if date_text:
-                                break
+            if not new_ids:
+                break  # no new orders → stop pagination
 
-                    order_date = parse_amazon_date(date_text) if date_text else None
-                    if not order_date:
-                        continue
-                    if not (start_date <= order_date <= end_date):
-                        found_any = True
-                        continue
+            for order_id in new_ids:
+                seen_ids.add(order_id)
+                order_date = self._find_order_date(page_text, order_id, year)
+                if order_date and start_date <= order_date <= end_date:
+                    orders.append({"id": order_id, "date": order_date.isoformat()})
 
-                    # Order ID
-                    order_id = None
-                    for sel in [
-                        '.yohtmlc-order-id .a-color-secondary',
-                        '.order-header .a-col-right .value',
-                        '[data-order-id]',
-                    ]:
-                        el = card.locator(sel).first
-                        if await el.count() > 0:
-                            raw = (await el.inner_text()).strip()
-                            match = re.search(r'\d{3}-\d{7}-\d{7}', raw)
-                            if match:
-                                order_id = match.group(0)
-                                break
+            await send({"type": "status",
+                        "message": f"Page {start_index // 10 + 1} — {len(new_ids)} commande(s) détectée(s)"})
 
-                    if not order_id:
-                        # Try data attribute
-                        attr = await card.get_attribute('data-order-id')
-                        if attr:
-                            order_id = attr.strip()
-
-                    if order_id:
-                        orders.append({"id": order_id,
-                                        "date": order_date.isoformat()})
-                        found_any = True
-
-                except Exception:
-                    continue
-
-            # Next page
+            # Next page button
             next_btn = page.locator(
                 '.a-pagination .a-last:not(.a-disabled) a, '
                 'li.a-last:not(.a-disabled) a'
             )
             if await next_btn.count() > 0:
                 start_index += 10
-                await asyncio.sleep(0.8)
+                await asyncio.sleep(1)
             else:
                 break
 
         return orders
+
+    def _find_order_date(self, page_text: str, order_id: str, year: int):
+        """Find the date of an order by looking at text surrounding its ID."""
+        idx = page_text.find(order_id)
+        # Search within ±800 chars around the order ID
+        context = page_text[max(0, idx - 800): idx + 800] if idx != -1 else page_text
+
+        # French date: "5 janvier 2024"
+        for month_name, month_num in MONTH_MAP_FR.items():
+            m = re.search(
+                rf'(\d{{1,2}})\s+{month_name}\s+(\d{{4}})', context, re.IGNORECASE)
+            if m:
+                try:
+                    return date(int(m.group(2)), month_num, int(m.group(1)))
+                except ValueError:
+                    pass
+
+        # English date: "January 5, 2024" or "5 January 2024"
+        for month_name, month_num in MONTH_MAP_EN.items():
+            for pat in [
+                rf'(\d{{1,2}})\s+{month_name}[\s,]+(\d{{4}})',
+                rf'{month_name}\s+(\d{{1,2}})[\s,]+(\d{{4}})',
+            ]:
+                m = re.search(pat, context, re.IGNORECASE)
+                if m:
+                    try:
+                        day = int(m.group(1))
+                        yr = int(m.group(2))
+                        return date(yr, month_num, day)
+                    except ValueError:
+                        pass
+
+        # Fallback: mid-year (order is on the correct year page, so include it)
+        return date(year, 6, 15)
 
     async def _download_invoice(self, page, order: dict, marketplace: str,
                                  download_dir: Path, context):
