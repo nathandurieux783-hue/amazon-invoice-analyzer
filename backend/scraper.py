@@ -88,10 +88,23 @@ class AmazonScraper:
                 locale='fr-FR',
             )
 
-            # Hide webdriver flag
-            await context.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-            )
+            # Hide webdriver flag + disable passkey/WebAuthn so Amazon skips that dialog
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                if (window.PublicKeyCredential) {
+                    window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable =
+                        () => Promise.resolve(false);
+                    window.PublicKeyCredential.isConditionalMediationAvailable =
+                        () => Promise.resolve(false);
+                }
+                if (navigator.credentials && navigator.credentials.get) {
+                    const _origGet = navigator.credentials.get.bind(navigator.credentials);
+                    navigator.credentials.get = (opts) => {
+                        if (opts && opts.publicKey) return Promise.reject(new Error('disabled'));
+                        return _origGet(opts);
+                    };
+                }
+            """)
 
             page = await context.new_page()
 
@@ -177,6 +190,33 @@ class AmazonScraper:
                 await browser.close()
 
     # ────────────────────────────────────────────────────────────────────────
+    async def _dismiss_passkey(self, page, marketplace: str):
+        """Click 'Fermer/Close' if Amazon shows a passkey dialog, then make sure
+        we're on the standard email/password signin page."""
+        try:
+            # Look for the Fermer / Close button in the passkey modal
+            for selector in [
+                'button:has-text("Fermer")',
+                'button:has-text("Close")',
+                'button:has-text("Annuler")',
+                '[data-testid="passkey-dismiss-button"]',
+            ]:
+                btn = page.locator(selector)
+                if await btn.count() > 0:
+                    await btn.first.click()
+                    await asyncio.sleep(1.5)
+                    break
+
+            # If the page redirected to a passkey-specific URL (e.g. /ap/signin/XXX),
+            # navigate back to the standard email form.
+            if re.search(r'/ap/signin/\d', page.url):
+                std_url = f"https://www.{marketplace}/ap/signin?openid.mode=checkid_setup&openid.ns=http://specs.openid.net/auth/2.0&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.assoc_handle=frflex&openid.return_to=https://www.{marketplace}/"
+                await page.goto(std_url, wait_until='domcontentloaded', timeout=20000)
+                await asyncio.sleep(1.5)
+
+        except Exception:
+            pass  # Non-blocking — proceed anyway
+
     async def _login(self, page, email, password, marketplace, send):
         url = (f"https://www.{marketplace}/ap/signin"
                "?openid.return_to=https%3A%2F%2Fwww." + marketplace + "%2F"
@@ -186,7 +226,10 @@ class AmazonScraper:
                "&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0")
 
         await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-        await asyncio.sleep(1.5)
+        await asyncio.sleep(2)
+
+        # Dismiss passkey dialog if Amazon shows one before the email form
+        await self._dismiss_passkey(page, marketplace)
 
         try:
             email_field = page.locator('#ap_email')
