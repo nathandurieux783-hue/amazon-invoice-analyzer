@@ -1,6 +1,8 @@
 import asyncio
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import os
+from pathlib import Path
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -77,6 +79,43 @@ async def analyze(req: AnalyzeRequest):
     analyzer = InvoiceAnalyzer()
     result = analyzer.analyze(req.download_path)
     return result
+
+
+class MkdirRequest(BaseModel):
+    path: str
+    name: str
+
+
+@app.get("/api/browse")
+def browse(path: str = Query(default="")):
+    """Return subdirectories at the given path (defaults to home dir)."""
+    target = Path(path) if path else Path.home()
+
+    if not target.exists() or not target.is_dir():
+        return {"error": "Dossier introuvable", "path": str(target), "dirs": [], "parent": None}
+
+    try:
+        dirs = sorted(
+            [{"name": d.name, "path": str(d)} for d in target.iterdir()
+             if d.is_dir() and not d.name.startswith('.')],
+            key=lambda x: x["name"].lower(),
+        )
+    except PermissionError:
+        dirs = []
+
+    parent = str(target.parent) if target.parent != target else None
+    return {"path": str(target), "parent": parent, "dirs": dirs}
+
+
+@app.post("/api/mkdir")
+def mkdir(req: MkdirRequest):
+    """Create a new subfolder inside the given path."""
+    new_dir = Path(req.path) / req.name
+    try:
+        new_dir.mkdir(parents=True, exist_ok=True)
+        return {"path": str(new_dir), "ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @app.get("/api/health")
