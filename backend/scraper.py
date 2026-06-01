@@ -6,6 +6,15 @@ from datetime import datetime, date
 from pathlib import Path
 from playwright.async_api import async_playwright
 
+def _strip_html(raw: str) -> str:
+    """Strip HTML tags, decode entities, collapse whitespace."""
+    text = re.sub(r'<[^>]+>', ' ', raw)
+    for ent, ch in [('&amp;', '&'), ('&quot;', '"'), ('&#39;', "'"),
+                    ('&lt;', '<'), ('&gt;', '>'), ('&nbsp;', ' ')]:
+        text = text.replace(ent, ch)
+    return ' '.join(text.split())
+
+
 MONTH_MAP_FR = {
     'janvier': 1, 'février': 2, 'mars': 3, 'avril': 4, 'mai': 5, 'juin': 6,
     'juillet': 7, 'août': 8, 'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12
@@ -358,16 +367,43 @@ class AmazonScraper:
 
     def _find_order_items(self, html: str, order_id: str) -> list[str]:
         idx = html.find(order_id)
-        # Product links always contain /dp/<ASIN>
-        ctx = html[max(0, idx - 200): idx + 4000] if idx != -1 else ""
-        titles = re.findall(
-            r'<a[^>]+href="[^"]*\/dp\/[A-Z0-9]{10}[^"]*"[^>]*>\s*([^<]{5,150})\s*<\/a>',
-            ctx)
-        skip = {'voir', 'détail', 'retour', 'aide', 'connexion', 'compte',
-                'commande', 'panier', 'liste', 'partager', 'signaler'}
-        items = [t.strip() for t in titles
-                 if t.strip() and not any(s in t.lower() for s in skip)]
-        return list(dict.fromkeys(items))[:6]  # dedupe, max 6
+        ctx = html[max(0, idx - 500): idx + 6000] if idx != -1 else ""
+
+        titles: list[str] = []
+
+        # Strategy 1 – product links /dp/<ASIN> (inner HTML may have nested tags)
+        for m in re.finditer(
+            r'<a\b[^>]*href="[^"]*\/dp\/([A-Z0-9]{10})[^"]*"[^>]*>(.*?)<\/a>',
+            ctx, re.DOTALL | re.IGNORECASE
+        ):
+            clean = _strip_html(m.group(2))
+            if 8 <= len(clean) <= 250:
+                titles.append(clean)
+
+        # Strategy 2 – fallback: <a class="a-link-normal"> with substantive text
+        if not titles:
+            for m in re.finditer(
+                r'<a\b[^>]*class="[^"]*a-link-normal[^"]*"[^>]*>(.*?)<\/a>',
+                ctx, re.DOTALL | re.IGNORECASE
+            ):
+                clean = _strip_html(m.group(1))
+                if 12 <= len(clean) <= 250:
+                    titles.append(clean)
+
+        SKIP = {'voir', 'détail', 'retour', 'aide', 'connexion', 'compte',
+                'commande', 'panier', 'liste', 'partager', 'signaler',
+                'ajouter', 'acheter', 'suivre', 'télécharger', 'imprimer',
+                'toutes nos', 'continuer', 'filtrer'}
+        seen: set = set()
+        items: list[str] = []
+        for t in titles:
+            if t in seen:
+                continue
+            if any(s in t.lower() for s in SKIP):
+                continue
+            seen.add(t)
+            items.append(t)
+        return items[:6]
 
     def _categorize(self, items: list[str]) -> str:
         from analyzer import categorize_item

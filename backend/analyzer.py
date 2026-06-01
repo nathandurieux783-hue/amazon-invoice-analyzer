@@ -6,77 +6,323 @@ from pathlib import Path
 
 import pdfplumber
 
-CATEGORIES = {
-    "Électronique & Informatique": [
-        "phone", "téléphone", "laptop", "ordinateur", "tablet", "tablette",
-        "câble", "casque", "écouteur", "chargeur", "clé usb", "disque dur",
-        "clavier", "souris", "écran", "moniteur", "imprimante", "cartouche",
-        "batterie", "hub", "adaptateur", "webcam", "micro", "enceinte",
-        "samsung", "apple", "iphone", "ipad", "macbook", "lenovo", "dell",
-        "hp", "asus", "acer", "logitech", "corsair", "razer", "gaming",
-        "raspberry", "arduino", "processeur", "ram", "ssd", "cpu", "gpu",
-        "bluetooth", "wifi", "routeur", "switch", "ethernet", "hdmi",
-    ],
-    "Livres & Médias": [
-        "livre", "book", "roman", "manga", "bd", "bande dessinée",
-        "dvd", "blu-ray", "cd", "vinyl", "jeu vidéo", "journal", "magazine",
-        "guide", "manuel", "dictionnaire", "encyclopédie", "audiobook",
-    ],
-    "Vêtements & Mode": [
-        "shirt", "t-shirt", "pantalon", "jean", "robe", "veste", "manteau",
-        "chaussure", "sneaker", "basket", "sac", "montre", "bijou", "ceinture",
-        "gant", "bonnet", "casquette", "pull", "sweat", "underwear", "slip",
-        "boxer", "soutien", "lingerie", "maillot", "collant",
-    ],
-    "Maison & Cuisine": [
-        "cuisine", "casserole", "poêle", "assiette", "verre", "couteau",
-        "décoration", "coussin", "lampe", "étagère", "meuble", "aspirateur",
-        "robot", "mixeur", "cafetière", "bouilloire", "grille-pain",
-        "réfrigérateur", "table", "chaise", "canapé", "lit", "matelas",
-        "draps", "couette", "rideau", "poubelle", "ménage", "nettoyage",
-    ],
-    "Sport & Loisirs": [
-        "sport", "fitness", "yoga", "vélo", "running", "football",
-        "tennis", "randonnée", "camping", "musculation", "natation",
-        "ski", "snowboard", "escalade", "haltère", "kettlebell", "élastique",
-        "tapis de course", "gourde", "sac à dos sport",
-    ],
-    "Santé & Beauté": [
-        "shampooing", "crème", "maquillage", "cosmétique", "médicament",
-        "vitamines", "masque", "sérum", "dentifrice", "brosse", "rasoir",
-        "parfum", "déodorant", "gel douche", "savon", "hydratant",
-        "solaire", "santé", "pharmacie", "complément alimentaire",
-    ],
-    "Alimentation & Épicerie": [
-        "food", "nourriture", "café", "thé", "chocolat", "snack",
-        "épicerie", "biscuit", "gâteau", "boisson", "eau", "jus",
-        "vin", "bière", "spiritueux", "alimentaire", "comestible",
-        "infusion", "capsule café", "nespresso",
-    ],
-    "Jeux & Jouets": [
-        "jeu", "jouet", "lego", "figurine", "puzzle", "jeu de société",
-        "peluche", "poupée", "voiture jouet", "construction", "kapla",
-        "playmobil", "minecraft", "fortnite",
-    ],
-    "Fournitures & Bureau": [
-        "papier", "stylo", "cahier", "classeur", "post-it", "bureau",
-        "fourniture", "agenda", "organiseur", "cartouche encre", "toner",
-        "chemise", "reliure", "calculatrice", "imprimante", "scotch",
-    ],
-    "Jardin & Bricolage": [
-        "jardin", "plante", "graine", "pot", "arrosoir", "tondeuse",
-        "bricolage", "outil", "perceuse", "tournevis", "marteau",
-        "vis", "chevilles", "peinture", "enduit", "scie", "pelouse",
-    ],
-    "Auto & Moto": [
-        "voiture", "auto", "moto", "véhicule", "pneu", "huile moteur",
-        "filtre", "accessoire voiture", "gps", "dashcam", "siège auto",
-        "antivol", "chaine neige",
-    ],
-    "Bébé & Puériculture": [
-        "bébé", "couche", "lait infantile", "nourrisson", "poussette",
-        "siège bébé", "jouet bébé", "biberon", "tétine", "parc bébé",
-    ],
+# Each category has:
+#   "brands"   → brand/marque names  → 5 pts each
+#   "strong"   → highly specific kw  → 3 pts each
+#   "keywords" → general keywords    → 1 pt  each
+CATEGORIES: dict[str, dict] = {
+    "Électronique & Informatique": {
+        "brands": [
+            "apple", "samsung", "sony", "lg", "philips", "logitech", "razer", "corsair",
+            "asus", "acer", "lenovo", "dell", "hp", "msi", "gigabyte", "anker", "belkin",
+            "jabra", "bose", "jbl", "sennheiser", "beats", "hyperx", "steelseries",
+            "seagate", "western digital", "sandisk", "kingston", "crucial",
+            "tp-link", "netgear", "linksys", "ubiquiti", "synology",
+            "nvidia", "intel", "amd", "noctua", "be quiet", "cooler master",
+            "elgato", "wacom", "brother", "canon", "epson", "dymo",
+        ],
+        "strong": [
+            "iphone", "ipad", "macbook", "airpods", "apple watch", "mac mini",
+            "galaxy", "pixel", "oneplus", "xiaomi", "oppo", "realme",
+            "playstation", "ps4", "ps5", "xbox", "nintendo switch", "steam deck",
+            "raspberry pi", "arduino", "esp32", "microcontrôleur",
+            "ssd", "nvme", "carte mère", "carte graphique", "cpu", "gpu",
+            "processeur", "ventirad", "watercooling",
+        ],
+        "keywords": [
+            "laptop", "ordinateur", "pc portable", "tour pc", "mini pc",
+            "tablette", "clavier", "souris", "trackpad", "écran", "moniteur",
+            "casque", "écouteur", "enceinte", "barre de son", "subwoofer",
+            "câble", "chargeur", "adaptateur", "hub", "dock", "usb", "hdmi",
+            "displayport", "thunderbolt", "prise", "multiprise",
+            "batterie externe", "powerbank", "chargeur sans fil",
+            "disque dur", "ram", "mémoire", "stockage",
+            "imprimante", "scanner", "encre", "cartouche", "toner",
+            "webcam", "microphone", "micro", "caméra", "projecteur",
+            "routeur", "switch réseau", "répéteur", "wifi", "ethernet",
+            "nas", "serveur", "raspberry", "arduino", "led", "strip led",
+            "smartwatch", "montre connectée", "bracelet connecté",
+            "gopro", "drone", "appareil photo", "objectif", "trépied",
+            "gaming", "manette", "joystick", "volant", "simulation",
+            "coque", "protection écran", "verre trempé", "film protecteur",
+        ],
+    },
+    "Livres & Médias": {
+        "brands": [
+            "gallimard", "hachette", "flammarion", "larousse", "robert laffont",
+            "albin michel", "fayard", "seuil", "actes sud", "pocket",
+        ],
+        "strong": [
+            "roman", "manga", "bande dessinée", "bd", "comics", "light novel",
+            "blu-ray", "blu ray", "4k uhd",
+            "vinyl", "vinyle", "33 tours", "45 tours",
+            "kindle", "ebook", "liseuse",
+        ],
+        "keywords": [
+            "livre", "book", "biographie", "autobiographie", "essai", "guide",
+            "manuel", "tutoriel", "encyclopédie", "dictionnaire", "atlas",
+            "thriller", "policier", "science-fiction", "fantasy", "horreur",
+            "dvd", "série", "film", "coffret", "intégrale",
+            "cd", "album", "compilation", "bande originale",
+            "magazine", "revue", "journal", "presse", "partitions",
+        ],
+    },
+    "Vêtements & Mode": {
+        "brands": [
+            "nike", "adidas", "puma", "reebok", "under armour", "new balance", "asics",
+            "levi", "tommy hilfiger", "calvin klein", "ralph lauren", "lacoste",
+            "north face", "columbia", "patagonia", "arc'teryx", "salomon",
+            "timberland", "ugg", "birkenstock", "converse", "vans",
+        ],
+        "strong": [
+            "t-shirt", "tshirt", "chemise", "polo", "hoodie", "sweat-shirt",
+            "pantalon", "jean", "chino", "legging", "jogging",
+            "robe", "jupe", "combinaison",
+            "sneaker", "basket", "running shoe", "chaussure de sport",
+            "soutien-gorge", "boxer", "slip", "culotte",
+        ],
+        "keywords": [
+            "pull", "sweat", "veste", "blouson", "manteau", "parka", "doudoune",
+            "imperméable", "coupe-vent", "short", "bermuda",
+            "pyjama", "nuisette", "sous-vêtement", "collant", "chaussette",
+            "chaussure", "botte", "sandales", "mocassin", "espadrille",
+            "sac à main", "portefeuille", "ceinture", "cravate",
+            "écharpe", "bonnet", "casquette", "chapeau", "gant",
+            "lunettes", "montre", "bijou", "bague", "collier", "bracelet",
+            "valise", "bagage", "sac de voyage",
+        ],
+    },
+    "Maison & Cuisine": {
+        "brands": [
+            "tefal", "seb", "moulinex", "delonghi", "nespresso", "dolce gusto",
+            "dyson", "roomba", "irobot", "karcher", "rowenta", "calor",
+            "bosch", "siemens", "whirlpool", "samsung", "lg", "miele",
+            "ikea", "atmosphera", "maisons du monde",
+        ],
+        "strong": [
+            "cafetière", "machine à café", "nespresso", "capsule", "dosette",
+            "robot culinaire", "thermomix", "airfryer", "friteuse sans huile",
+            "aspirateur robot", "roomba", "balai électrique", "aspirateur",
+            "canapé", "lit", "matelas", "sommier", "tête de lit",
+            "réfrigérateur", "lave-vaisselle", "lave-linge", "sèche-linge",
+        ],
+        "keywords": [
+            "casserole", "poêle", "wok", "cocotte", "autocuiseur", "faitout",
+            "couteau", "planche à découper", "fouet", "spatule", "louche",
+            "assiette", "bol", "tasse", "verre", "carafe", "saladier",
+            "bouilloire", "grille-pain", "toaster", "gaufrier", "croque",
+            "mixeur", "blender", "centrifugeuse", "extracteur",
+            "four", "micro-ondes", "induction", "plancha", "barbecue",
+            "coussin", "plaid", "couverture", "couette", "oreiller",
+            "drap", "housse de couette", "protège-matelas",
+            "rideau", "store", "tapis", "moquette",
+            "lampe", "luminaire", "ampoule", "lustre", "applique",
+            "étagère", "bibliothèque", "meuble", "table", "chaise", "bureau",
+            "cadre", "miroir", "vase", "bougie", "décoration",
+            "poubelle", "rangement", "boite", "tiroir", "penderie",
+            "nettoyage", "lessive", "produit ménager", "éponge",
+        ],
+    },
+    "Sport & Loisirs": {
+        "brands": [
+            "decathlon", "domyos", "kalenji", "quechua", "forclaz", "artengo",
+            "shimano", "garmin", "polar", "suunto", "fitbit",
+            "wilson", "babolat", "head",
+        ],
+        "strong": [
+            "vélo", "vtt", "vélo électrique", "trottinette électrique",
+            "tapis de course", "vélo elliptique", "rameur", "banc de musculation",
+            "sac de couchage", "tente", "hamac de camping",
+            "ski", "snowboard", "surf", "kitesurf", "wingfoil",
+        ],
+        "keywords": [
+            "running", "trail", "marathon", "course à pied",
+            "yoga", "pilates", "tapis de yoga", "bloc yoga",
+            "musculation", "haltère", "kettlebell", "barre de traction",
+            "élastique", "bande de résistance", "corde à sauter",
+            "natation", "maillot bain", "lunettes natation", "palme",
+            "football", "ballon", "protège-tibia",
+            "tennis", "raquette", "padel",
+            "randonnée", "trekking", "bâton", "gourde",
+            "camping", "bivouac", "sac à dos rando",
+            "fitness", "gym", "sport",
+            "escalade", "chausson escalade",
+            "boxe", "arts martiaux",
+        ],
+    },
+    "Santé & Beauté": {
+        "brands": [
+            "oral-b", "colgate", "sensodyne", "elmex", "signal",
+            "loreal", "garnier", "nivea", "neutrogena", "la roche-posay",
+            "vichy", "avene", "bioderma", "caudalie", "nuxe", "clarins",
+            "gillette", "wilkinson", "braun", "remington", "philips",
+            "biafine", "bepanthen", "weleda",
+        ],
+        "strong": [
+            "sérum", "crème hydratante", "fond de teint", "mascara",
+            "rouge à lèvres", "palette maquillage", "bb cream", "cc cream",
+            "dentifrice", "brosse à dents électrique", "fil dentaire",
+            "rasoir électrique", "épilateur", "tondeuse corps",
+            "thermomètre", "tensiomètre", "oxymètre", "glucomètre",
+        ],
+        "keywords": [
+            "shampooing", "shampoo", "après-shampooing", "masque cheveux",
+            "crème", "lotion", "tonique", "huile", "baume",
+            "maquillage", "cosmétique", "parfum", "eau de toilette",
+            "déodorant", "anti-transpirant",
+            "gel douche", "savon", "mousse lavante",
+            "rasoir", "lame", "mousse à raser", "gel rasage",
+            "bain de bouche", "blanchiment dents",
+            "vitamines", "complément", "oméga", "magnésium", "probiotique",
+            "médicament", "doliprane", "paracétamol", "ibuprofène",
+            "bandage", "pansement", "désinfectant", "cicatrisant",
+            "coton", "coton-tige", "lingette", "démaquillant",
+        ],
+    },
+    "Alimentation & Épicerie": {
+        "brands": [
+            "nespresso", "dolce gusto", "illy", "lavazza", "carte noire",
+            "lindt", "ferrero", "kinder", "haribo", "milka", "côte d'or",
+            "bjorg", "bio", "jardin bio", "gerblé",
+        ],
+        "strong": [
+            "capsule café", "dosette café", "grain de café", "café moulu",
+            "protéine whey", "créatine", "bcaa", "barre protéinée",
+            "complément sportif", "boisson isotonique",
+        ],
+        "keywords": [
+            "café", "thé", "infusion", "tisane", "matcha", "kombucha",
+            "chocolat", "bonbon", "confiserie", "biscuit", "gâteau", "cookie",
+            "snack", "chips", "popcorn", "noix", "fruit sec", "muesli", "céréale",
+            "pâte", "riz", "semoule", "farine", "sucre", "sel", "épice",
+            "huile", "vinaigre", "sauce", "moutarde", "mayonnaise",
+            "eau", "soda", "jus", "sirop", "limonade",
+            "vin", "bière", "whisky", "rhum", "gin", "cidre",
+            "alimentaire", "nourriture", "épicerie",
+        ],
+    },
+    "Jeux & Jouets": {
+        "brands": [
+            "lego", "playmobil", "hasbro", "mattel", "ravensburger", "clementoni",
+            "fisher-price", "vtech", "leapfrog", "chicco", "brio", "haba",
+        ],
+        "strong": [
+            "lego technic", "lego city", "lego star wars", "lego ninjago",
+            "playmobil city", "playmobil pirates",
+            "jeu de société", "jeu de plateau", "jeu de cartes",
+            "peluche", "doudou",
+        ],
+        "keywords": [
+            "figurine", "poupée", "puzzle", "kapla", "duplo", "mécano",
+            "construction jouet", "voiture télécommandée", "drone jouet",
+            "jeu éducatif", "balle jouet", "trottinette enfant", "vélo enfant",
+            "dessin", "coloriage", "pâte à modeler",
+            "déguisement", "costume enfant",
+        ],
+    },
+    "Fournitures & Bureau": {
+        "brands": [
+            "bic", "pilot", "stabilo", "staedtler", "moleskine", "leuchtturm",
+            "avery", "scotch", "pritt", "veleda",
+        ],
+        "strong": [
+            "stylo à bille", "stylo plume", "stylo gel",
+            "cahier spirale", "carnet moleskine",
+            "post-it", "note adhésive",
+            "agrafeuse", "destructeur de documents", "plastifieuse",
+            "fauteuil ergonomique", "chaise de bureau",
+        ],
+        "keywords": [
+            "stylo", "crayon", "feutre", "surligneur", "marqueur",
+            "cahier", "carnet", "bloc-notes", "agenda",
+            "classeur", "chemise", "pochette", "porte-documents",
+            "reliure", "papier", "rame", "enveloppe", "étiquette",
+            "scotch adhésif", "colle", "ciseaux", "taille-crayon",
+            "calculatrice", "règle", "équerre",
+            "bureau", "organiseur bureau",
+        ],
+    },
+    "Jardin & Bricolage": {
+        "brands": [
+            "bosch", "makita", "dewalt", "stanley", "black decker", "ryobi",
+            "karcher", "husqvarna", "stihl", "gardena", "hozelock",
+        ],
+        "strong": [
+            "perceuse visseuse", "scie circulaire", "ponceuse orbitale",
+            "taille-haie", "débroussailleuse", "tondeuse gazon",
+            "nettoyeur haute pression",
+        ],
+        "keywords": [
+            "perceuse", "visseuse", "marteau", "tournevis", "pince", "scie",
+            "ponceuse", "meuleuse", "niveau", "mètre ruban",
+            "vis", "cheville", "boulon", "clou", "écrou",
+            "peinture", "rouleau peinture", "pinceau", "enduit", "vernis",
+            "colle", "mastic", "joint", "silicone",
+            "tuyau", "robinet", "plomberie", "siphon",
+            "plante", "pot", "terreau", "engrais", "graine", "bulbe",
+            "arrosoir", "tuyau arrosage", "asperseur",
+            "jardin", "potager", "compost",
+            "barbecue", "parasol", "salon de jardin", "transat",
+        ],
+    },
+    "Auto & Moto": {
+        "brands": [
+            "michelin", "continental", "bridgestone", "pirelli", "goodyear",
+            "bosch auto", "valeo", "midas",
+        ],
+        "strong": [
+            "pneu auto", "jante aluminium", "chaîne neige",
+            "dashcam", "radar de recul", "caméra 360",
+            "siège auto bébé", "rehausseur enfant",
+        ],
+        "keywords": [
+            "pneu", "jante", "roue", "enjoliveur",
+            "huile moteur", "filtre à huile", "filtre air", "filtre habitacle",
+            "batterie voiture", "essuie-glace", "ampoule voiture",
+            "plaquette frein", "disque frein", "liquide frein",
+            "autoradio", "gps voiture", "câble recharge voiture",
+            "tapis voiture", "housses siège", "couvre-volant",
+            "casque moto", "gant moto", "gilet réfléchissant",
+            "véhicule", "automobile",
+        ],
+    },
+    "Animaux": {
+        "brands": [
+            "royal canin", "purina", "hills", "pedigree", "whiskas",
+            "kong", "trixie", "ferplast", "catit",
+        ],
+        "strong": [
+            "croquette chien", "croquette chat", "pâtée chien", "pâtée chat",
+            "litière agglomérante", "bac à litière",
+            "arbre à chat", "griffoir",
+        ],
+        "keywords": [
+            "croquette", "pâtée animaux", "nourriture chien", "nourriture chat",
+            "laisse", "collier chien", "harnais", "muselière",
+            "cage transport", "panier animal",
+            "jouet chien", "jouet chat", "friandise animaux",
+            "aquarium", "nourriture poisson",
+            "rongeur", "hamster", "lapin", "oiseau",
+            "antiparasitaire", "vermifuge", "shampooing animal",
+        ],
+    },
+    "Bébé & Puériculture": {
+        "brands": [
+            "pampers", "huggies", "chicco", "babybjorn", "cybex", "maxi-cosi",
+            "ingenuity", "nuby", "tommee tippee", "philips avent",
+        ],
+        "strong": [
+            "couche bébé", "couche-culotte", "lait infantile", "lait maternisé",
+            "poussette", "nacelle", "siège auto bébé", "cosy",
+        ],
+        "keywords": [
+            "bébé", "nourrisson", "biberon", "tétine", "sucette",
+            "parc bébé", "transat bébé", "relax bébé",
+            "vêtement bébé", "body bébé", "pyjama bébé",
+            "jouet éveil", "tapis éveil", "mobile bébé",
+            "baignoire bébé", "siège de bain",
+        ],
+    },
 }
 
 MONTH_NAMES_FR = [
@@ -85,15 +331,42 @@ MONTH_NAMES_FR = [
 ]
 
 
+def _clean_html(raw: str) -> str:
+    """Strip HTML tags and decode common entities."""
+    text = re.sub(r'<[^>]+>', ' ', raw)
+    for ent, ch in [('&amp;', '&'), ('&quot;', '"'), ('&#39;', "'"),
+                    ('&lt;', '<'), ('&gt;', '>'), ('&nbsp;', ' ')]:
+        text = text.replace(ent, ch)
+    return ' '.join(text.split())
+
+
 def categorize_item(item_name: str) -> str:
-    item_lower = item_name.lower()
-    best_category, best_score = "Autres", 0
-    for category, keywords in CATEGORIES.items():
-        score = sum(1 for kw in keywords if kw in item_lower)
+    if not item_name or not item_name.strip():
+        return "Autres"
+    name_lower = item_name.lower()
+
+    best_cat, best_score = "Autres", 0
+
+    for cat, data in CATEGORIES.items():
+        score = 0
+        # Brands  → 5 pts (high signal)
+        for brand in data.get("brands", []):
+            if brand in name_lower:
+                score += 5
+        # Strong keywords → 3 pts
+        for kw in data.get("strong", []):
+            if kw in name_lower:
+                score += 3
+        # Generic keywords → 1 pt
+        for kw in data.get("keywords", []):
+            if kw in name_lower:
+                score += 1
+
         if score > best_score:
             best_score = score
-            best_category = category
-    return best_category
+            best_cat = cat
+
+    return best_cat
 
 
 def _extract_largest_amount(text: str) -> float:
@@ -216,18 +489,25 @@ def parse_invoice_pdf(pdf_path: str) -> dict:
 
 class InvoiceAnalyzer:
     def analyze_orders(self, orders: list) -> dict:
-        """Analyze orders scraped directly from Amazon (no PDFs needed)."""
-        # Normalise to the same shape _aggregate expects
-        invoices = [
-            {
+        """Analyze orders scraped directly from Amazon (no PDFs needed).
+        Re-runs categorisation here so updated keywords always apply."""
+        invoices = []
+        for o in orders:
+            items_raw = o.get("items", [])
+            # Re-categorise using the latest keyword lists
+            if items_raw:
+                from collections import Counter
+                cats = Counter(categorize_item(name) for name in items_raw)
+                category = cats.most_common(1)[0][0]
+            else:
+                category = o.get("category", "Autres")
+            invoices.append({
                 "order_id": o.get("id"),
                 "date":     o.get("date"),
                 "total":    float(o.get("total", 0) or 0),
-                "category": o.get("category", "Autres"),
-                "items":    [{"name": n, "price": 0} for n in o.get("items", [])],
-            }
-            for o in orders
-        ]
+                "category": category,
+                "items":    items_raw,
+            })
         return self._aggregate(invoices)
 
     def analyze(self, download_path: str) -> dict:
@@ -281,11 +561,13 @@ class InvoiceAnalyzer:
             ],
             "cumulative": cumulative,
             "top_invoices": sorted(
-                [{"id": inv.get("order_id", "?"),
-                  "date": inv.get("date", ""),
-                  "total": inv["total"],
-                  "category": inv.get("category", "Autres")}
-                 for inv in valid],
+                [{
+                    "id":       inv.get("order_id", "?"),
+                    "date":     inv.get("date", ""),
+                    "total":    inv["total"],
+                    "category": inv.get("category", "Autres"),
+                    "products": inv.get("items", [])[:3],
+                } for inv in valid],
                 key=lambda x: x["total"],
                 reverse=True
             )[:10],

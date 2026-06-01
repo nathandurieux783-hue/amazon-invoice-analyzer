@@ -266,8 +266,17 @@ export default function AnalysisStep({ data, downloadPath }) {
                   <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-2.5 text-gray-400">{i + 1}</td>
                     <td className="py-2.5 font-mono text-xs text-gray-600">{inv.id}</td>
-                    <td className="py-2.5 text-gray-500">{inv.date}</td>
-                    <td className="py-2.5 text-gray-500 text-xs">{inv.category}</td>
+                    <td className="py-2.5 text-gray-500 text-xs">{inv.date}</td>
+                    <td className="py-2.5 text-xs">
+                      <span className="inline-block bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 mb-0.5">
+                        {inv.category}
+                      </span>
+                      {inv.products?.length > 0 && (
+                        <p className="text-gray-400 text-xs truncate max-w-xs mt-0.5">
+                          {inv.products.join(' · ')}
+                        </p>
+                      )}
+                    </td>
                     <td className="py-2.5 text-right font-bold text-amazon-orange">
                       {fmt(inv.total)}
                     </td>
