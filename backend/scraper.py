@@ -257,36 +257,82 @@ class AmazonScraper:
             await page.keyboard.press('Enter')
         await asyncio.sleep(3)
 
+    async def _apply_year_filter(self, page, marketplace: str, year: int):
+        """Ensure the order-history page is filtered to the requested year.
+        Amazon defaults to 'last 3 months'; we need to force the year view."""
+        # Navigate with the year filter in the URL (works in most cases)
+        url = (f"https://www.{marketplace}/gp/your-account/order-history"
+               f"?orderFilter=year-{year}&startIndex=0")
+        await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        await asyncio.sleep(2)
+
+        # Verify the filter took effect: check that a <select> or link shows the year,
+        # or that the page doesn't still say "3 derniers mois" / "last 3 months".
+        page_text = await page.evaluate("() => document.body.innerText")
+        still_default = any(k in page_text.lower() for k in [
+            'derniers mois', 'last 3 months', '3 months',
+        ])
+
+        if still_default:
+            # Try clicking the filter dropdown and selecting the year
+            try:
+                select = page.locator('select[name="orderFilter"], #time-filter')
+                if await select.count() > 0:
+                    await select.select_option(value=f'year-{year}')
+                    await asyncio.sleep(2)
+                else:
+                    # Try clicking a link/button for the year
+                    year_link = page.locator(
+                        f'a:has-text("{year}"), button:has-text("{year}")'
+                    ).first
+                    if await year_link.count() > 0:
+                        await year_link.click()
+                        await asyncio.sleep(2)
+            except Exception:
+                pass  # URL approach remains; proceed anyway
+
     async def _get_year_orders(self, page, marketplace, year,
                                 start_date, end_date, send):
         """Extract orders by scanning raw HTML for order-ID patterns.
         This avoids relying on Amazon's frequently-changing CSS classes."""
         orders = []
         seen_ids: set = set()
+        cancelled_count = 0
         start_index = 0
 
-        while True:
-            url = (f"https://www.{marketplace}/gp/your-account/order-history"
-                   f"?orderFilter=year-{year}&startIndex={start_index}")
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(2)
+        # Force the correct year filter (Amazon defaults to "last 3 months")
+        await self._apply_year_filter(page, marketplace, year)
 
-            # Pull both raw HTML (for order IDs) and visible text (for dates)
-            html = await page.content()
+        while True:
+            if start_index > 0:
+                url = (f"https://www.{marketplace}/gp/your-account/order-history"
+                       f"?orderFilter=year-{year}&startIndex={start_index}")
+                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                await asyncio.sleep(2)
+
+            html      = await page.content()
             page_text = await page.evaluate("() => document.body.innerText")
 
-            # Find every order ID on this page (pattern: 3-7-7 digits)
             found_ids = list(dict.fromkeys(re.findall(r'\b(\d{3}-\d{7}-\d{7})\b', html)))
-            new_ids = [oid for oid in found_ids if oid not in seen_ids]
+            new_ids   = [oid for oid in found_ids if oid not in seen_ids]
 
             if not new_ids:
-                break  # no new orders → stop pagination
+                break
 
             for order_id in new_ids:
                 seen_ids.add(order_id)
+
+                # ── Skip cancelled orders ──────────────────────────────────
+                if self._is_cancelled(page_text, order_id):
+                    cancelled_count += 1
+                    await send({"type": "warning",
+                                "message": f"Commande {order_id} annulée — ignorée"})
+                    continue
+
                 order_date = self._find_order_date(page_text, order_id, year)
                 if not order_date or not (start_date <= order_date <= end_date):
                     continue
+
                 amount = self._find_order_amount(page_text, order_id)
                 items  = self._find_order_items(html, order_id)
                 orders.append({
@@ -297,10 +343,15 @@ class AmazonScraper:
                     "category": self._categorize(items),
                 })
 
-            await send({"type": "status",
-                        "message": f"Page {start_index // 10 + 1} — {len(new_ids)} commande(s) détectée(s)"})
+            await send({
+                "type":      "status",
+                "message":   (
+                    f"Page {start_index // 10 + 1} — "
+                    f"{len(orders)} retenue(s)"
+                    + (f", {cancelled_count} annulée(s) ignorée(s)" if cancelled_count else "")
+                ),
+            })
 
-            # Next page button
             next_btn = page.locator(
                 '.a-pagination .a-last:not(.a-disabled) a, '
                 'li.a-last:not(.a-disabled) a'
@@ -311,40 +362,90 @@ class AmazonScraper:
             else:
                 break
 
+        if cancelled_count:
+            await send({"type": "info",
+                        "message": f"⚠️ {cancelled_count} commande(s) annulée(s) exclue(s) du bilan."})
         return orders
 
-    def _find_order_date(self, page_text: str, order_id: str, year: int):
-        """Find the date of an order by looking at text surrounding its ID."""
+    # Keywords that indicate a cancelled order (checked in the text that follows
+    # the order ID on the history page)
+    _CANCEL_KEYWORDS = [
+        'annulée', 'annulé', 'annulation',
+        'commande annulée', 'commande annulé',
+        'cancelled', 'canceled', 'order cancelled', 'order canceled',
+    ]
+
+    def _is_cancelled(self, page_text: str, order_id: str) -> bool:
+        """Return True if the order appears to be cancelled."""
         idx = page_text.find(order_id)
-        # Search within ±800 chars around the order ID
-        context = page_text[max(0, idx - 800): idx + 800] if idx != -1 else page_text
+        if idx == -1:
+            return False
+        # Status text is shown right after the order ID block (~600 chars)
+        ctx = page_text[idx: idx + 600].lower()
+        return any(kw in ctx for kw in self._CANCEL_KEYWORDS)
 
-        # French date: "5 janvier 2024"
-        for month_name, month_num in MONTH_MAP_FR.items():
-            m = re.search(
-                rf'(\d{{1,2}})\s+{month_name}\s+(\d{{4}})', context, re.IGNORECASE)
-            if m:
-                try:
-                    return date(int(m.group(2)), month_num, int(m.group(1)))
-                except ValueError:
-                    pass
+    def _find_order_date(self, page_text: str, order_id: str, year: int):
+        """Find the ORDER placement date (not shipping/delivery date).
 
-        # English date: "January 5, 2024" or "5 January 2024"
-        for month_name, month_num in MONTH_MAP_EN.items():
-            for pat in [
-                rf'(\d{{1,2}})\s+{month_name}[\s,]+(\d{{4}})',
-                rf'{month_name}\s+(\d{{1,2}})[\s,]+(\d{{4}})',
-            ]:
-                m = re.search(pat, context, re.IGNORECASE)
+        Priority:
+        1. Labelled placement date: "Commande passée le …" / "Order placed …"
+        2. First valid date found in the text block before the order ID
+        3. Fallback: mid-year (still on the correct year page)
+        """
+        idx = page_text.find(order_id)
+        # The order-date label appears BEFORE the order ID in the card
+        before = page_text[max(0, idx - 600): idx] if idx != -1 else ""
+        after  = page_text[idx: idx + 200]           if idx != -1 else ""
+        combined = before + after
+
+        def _try_fr(text: str):
+            for month_name, month_num in MONTH_MAP_FR.items():
+                m = re.search(
+                    rf'(\d{{1,2}})\s+{month_name}\s+(\d{{4}})', text, re.IGNORECASE)
                 if m:
                     try:
-                        day = int(m.group(1))
-                        yr = int(m.group(2))
-                        return date(yr, month_num, day)
+                        return date(int(m.group(2)), month_num, int(m.group(1)))
                     except ValueError:
                         pass
+            return None
 
-        # Fallback: mid-year (order is on the correct year page, so include it)
+        def _try_en(text: str):
+            for month_name, month_num in MONTH_MAP_EN.items():
+                for pat in [
+                    rf'(\d{{1,2}})\s+{month_name}[\s,]+(\d{{4}})',
+                    rf'{month_name}\s+(\d{{1,2}})[\s,]+(\d{{4}})',
+                ]:
+                    m = re.search(pat, text, re.IGNORECASE)
+                    if m:
+                        try:
+                            return date(int(m.group(2)), month_num, int(m.group(1)))
+                        except ValueError:
+                            pass
+            return None
+
+        # ── Pass 1: look for an explicit order-date label ──────────────────
+        for label_pat in [
+            r'(?:Commande\s+pass[ée]e?\s+le|pass[ée]e?\s+le)\s+(.{5,30})',
+            r'(?:Order\s+placed|Ordered\s+on|Date\s+de\s+commande)\s*:?\s*(.{5,30})',
+        ]:
+            m = re.search(label_pat, combined, re.IGNORECASE)
+            if m:
+                snippet = m.group(1)
+                d = _try_fr(snippet) or _try_en(snippet)
+                if d:
+                    return d
+
+        # ── Pass 2: first date that appears BEFORE the order ID ────────────
+        d = _try_fr(before) or _try_en(before)
+        if d:
+            return d
+
+        # ── Pass 3: any date anywhere around the order ─────────────────────
+        d = _try_fr(combined) or _try_en(combined)
+        if d:
+            return d
+
+        # ── Fallback ───────────────────────────────────────────────────────
         return date(year, 6, 15)
 
     def _find_order_amount(self, page_text: str, order_id: str) -> float:
