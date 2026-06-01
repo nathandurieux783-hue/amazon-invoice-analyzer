@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon Invoice Analyzer — Analysez vos dépenses Amazon</title>
+  <meta name="description" content="Téléchargez gratuitement Amazon Invoice Analyzer et obtenez un bilan complet de vos dépenses Amazon en quelques secondes. Graphiques, catégories, commentaires automatiques." />
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --orange: #FF9900;
+      --orange-dark: #e68a00;
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --blue-win: #0078D4;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    /* ── NAV ─────────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,17,23,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-brand { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .nav-brand span { color: var(--orange); }
+    .nav-gh { color: var(--muted); text-decoration: none; font-size: 0.85rem; }
+    .nav-gh:hover { color: var(--text); }
+
+    /* ── HERO ────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 96px 24px 72px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(255,153,0,0.15);
+      color: var(--orange);
+      border: 1px solid rgba(255,153,0,0.3);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 4px 14px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: clamp(2.2rem, 6vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+    .hero h1 em { font-style: normal; color: var(--orange); }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 540px;
+      margin: 0 auto 44px;
+    }
+
+    /* ── BUTTONS ─────────────────────────────────────────────────────── */
+    .dl-row {
+      display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 13px 26px;
+      border-radius: 10px;
+      font-weight: 700; font-size: 0.98rem;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.08); box-shadow: 0 8px 28px rgba(0,0,0,0.5); }
+    .btn:active { transform: translateY(0); }
+    .btn-mac  { background: var(--orange); color: #0d1117; }
+    .btn-win  { background: var(--blue-win); color: #fff; }
+    .btn-icon { font-size: 1.25rem; }
+    .req {
+      font-size: 0.78rem; color: var(--muted);
+      display: flex; align-items: center; justify-content: center; gap: 16px;
+      flex-wrap: wrap; margin-top: 4px;
+    }
+    .req span::before { content: "· "; }
+    .req span:first-child::before { content: ""; }
+
+    /* ── SECTION TITLE ───────────────────────────────────────────────── */
+    .section { max-width: 960px; margin: 0 auto; padding: 64px 24px; }
+    .section-title {
+      font-size: 1.75rem; font-weight: 700; text-align: center;
+      margin-bottom: 12px;
+    }
+    .section-sub {
+      text-align: center; color: var(--muted); font-size: 0.95rem;
+      margin-bottom: 44px;
+    }
+
+    /* ── FEATURES GRID ───────────────────────────────────────────────── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+    }
+    .feature {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 22px;
+      transition: border-color 0.2s;
+    }
+    .feature:hover { border-color: var(--orange); }
+    .f-icon { font-size: 2rem; margin-bottom: 14px; }
+    .feature h3 { font-size: 0.98rem; font-weight: 700; margin-bottom: 6px; }
+    .feature p  { font-size: 0.86rem; color: var(--muted); }
+
+    /* ── STEPS ────────────────────────────────────────────────────────── */
+    .steps { display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin: 0 auto; }
+    .step {
+      display: flex; align-items: flex-start; gap: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+    }
+    .step-n {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--orange); color: #0d1117;
+      font-weight: 800; font-size: 0.9rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-body h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 4px; }
+    .step-body p  { font-size: 0.85rem; color: var(--muted); }
+
+    /* ── PRIVACY ──────────────────────────────────────────────────────── */
+    .privacy-banner {
+      max-width: 700px; margin: 0 auto;
+      background: rgba(255,153,0,0.07);
+      border: 1px solid rgba(255,153,0,0.25);
+      border-radius: 14px;
+      padding: 28px 32px;
+      text-align: center;
+    }
+    .privacy-banner h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 8px; }
+    .privacy-banner p  { font-size: 0.88rem; color: var(--muted); }
+
+    /* ── FOOTER ───────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      text-align: center;
+      padding: 32px 24px;
+      font-size: 0.82rem; color: var(--muted);
+    }
+    footer a { color: var(--orange); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────────── */
+    @media (max-width: 540px) {
+      .btn { width: 100%; justify-content: center; }
+      .dl-row { flex-direction: column; }
+      .req { flex-direction: column; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-brand">📦 Amazon <span>Analyzer</span></div>
+    <a class="nav-gh" href="https://github.com/nathandurieux783-hue/amazon-invoice-analyzer" target="_blank">
+      ⭐ Code source
+    </a>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">Gratuit &amp; Open Source</div>
+    <h1>Analysez toutes vos<br>dépenses <em>Amazon</em></h1>
+    <p>
+      Connectez-vous à votre compte, choisissez une période et obtenez
+      instantanément un bilan complet avec graphiques, catégories et commentaires.
+    </p>
+
+    <div class="dl-row">
+      <a class="btn btn-mac" href="https://github.com/nathandurieux783-hue/amazon-invoice-analyzer/releases/latest/download/Amazon-Analyzer-Mac.zip">
+        <span class="btn-icon">🍎</span>
+        Télécharger pour Mac
+      </a>
+      <a class="btn btn-win" href="https://github.com/nathandurieux783-hue/amazon-invoice-analyzer/releases/latest/download/Amazon-Analyzer-Windows.zip">
+        <span class="btn-icon">🪟</span>
+        Télécharger pour Windows
+      </a>
+    </div>
+    <div class="req">
+      <span>Gratuit</span>
+      <span>Python 3.10+</span>
+      <span>Node.js 18+</span>
+      <span>macOS · Windows 64-bit</span>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <div class="section">
+    <h2 class="section-title">Tout ce dont vous avez besoin</h2>
+    <p class="section-sub">Une application web locale, légère et sans abonnement.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="f-icon">🔒</div>
+        <h3>100 % local</h3>
+        <p>Vos identifiants et données ne quittent jamais votre ordinateur.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">⚡</div>
+        <h3>Ultra rapide</h3>
+        <p>Extraction directe depuis Amazon — résultats en quelques secondes.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">📊</div>
+        <h3>Graphiques détaillés</h3>
+        <p>Par catégorie, par mois, courbe cumulative et top commandes.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">🏷️</div>
+        <h3>Catégorisation auto</h3>
+        <p>Électronique, Mode, Maison… chaque commande classée automatiquement.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">📅</div>
+        <h3>Multi-années</h3>
+        <p>Analysez de quelques mois à plusieurs années d'achats.</p>
+      </div>
+      <div class="feature">
+        <div class="f-icon">🚫</div>
+        <h3>Annulations exclues</h3>
+        <p>Les commandes annulées sont automatiquement ignorées du bilan.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="section" style="padding-top:0">
+    <h2 class="section-title">Comment ça marche ?</h2>
+    <p class="section-sub">4 étapes, aucune configuration.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h4>Téléchargez et lancez</h4>
+          <p>Décompressez l'archive puis double-cliquez sur <strong>start.sh</strong> (Mac) ou <strong>start.bat</strong> (Windows). Les dépendances s'installent automatiquement.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h4>Connectez-vous à Amazon</h4>
+          <p>Saisissez votre email et mot de passe Amazon. Si votre compte utilise la double authentification, un champ OTP apparaît automatiquement.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h4>Choisissez votre période</h4>
+          <p>De quelques mois à plusieurs années. Le bon filtre est sélectionné automatiquement.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-body">
+          <h4>Obtenez votre bilan</h4>
+          <p>Graphiques interactifs, commentaires automatiques, tableau des dépenses par catégorie.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Privacy -->
+  <div class="section" style="padding-top:0">
+    <div class="privacy-banner">
+      <h3>🛡️ Vie privée garantie</h3>
+      <p>
+        Amazon Invoice Analyzer fonctionne entièrement sur votre machine.
+        Aucun serveur externe, aucune collecte de données, aucun compte à créer.
+        Votre mot de passe Amazon n'est utilisé que pour la session en cours et n'est jamais stocké.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      Amazon Invoice Analyzer est un projet open source indépendant.
+      <a href="https://github.com/nathandurieux783-hue/amazon-invoice-analyzer" target="_blank">Voir le code sur GitHub</a>
+    </p>
+    <p style="margin-top:8px">Aucune affiliation avec Amazon.com, Inc.</p>
+  </footer>
+
+</body>
+</html>
